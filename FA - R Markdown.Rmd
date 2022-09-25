@@ -1,0 +1,248 @@
+---
+title: "Forecasting Analytics - Assignment"
+author: "Unnati Khinvasara"
+date: "`r Sys.Date()`"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+***
+
+#### **Background**
+Consider the data set SouvenirSales.xls (1995 Jan -2001 Dec) that gives the monthly sales of souvenir at a shop in New York. Back in 2001, an analyst was appointed to forecast sales for the next 12 months (Year 2002). The analyst portioned the data by keeping the last 12 months of data (year 2001) as validation set, and the remaining data as training set. Answer the following questions. Use R.
+
+***
+
+Importing required Libraries *(Code & Output hidden for better presentation)*
+```{r include=FALSE}
+library(readxl)
+library(imputeTS)
+library(forecast)
+library(fpp2)
+library(wavelets)
+library(zoo)
+library(ggpubr)
+library(TSA)
+library(xts)
+library(timeSeries)
+library(vcdExtra)
+```
+
+Reading and exploring the dataset
+```{r}
+df <- read_excel("F:\\ISB\\3 - Term 3 - (3-7 Aug) - M\\Forecasting Analytics\\Individual Assignment (25th Sept)\\SouvenirSales.xlsx")
+str(df)
+```
+
+Converting dataset from tibble to dataframe
+```{r}
+df <- as.data.frame(df)
+summary(df)
+head(df)
+```
+
+
+***
+##### **Q1(a) - Plot the time series of the original data. Which time series components appear from the plot.** 
+
+```{r}
+
+q1.ts <- ts(df$Sales, start= c(1995,1), frequency = 12) 
+q1.ts
+
+plot(q1.ts/1000, main = "Q1 - Plot of Souvenir Sales", xlab = "Time", ylab="Sales '000" )
+
+```
+
+The following is a gist of the time series components which appear from the above charts - 
+
+* We can firstly spot the **seasonality** in the dataset. There seem to be 2 seasonal peaks in each year. One smaller peak in March and another significant peak in December. This could be attributed to the fact of holiday & vacation season of Easter and Christmas.
+* Secondly, we can see that the **trend** is increasing with years and seems to be *exponential* in nature since it is increasing with a wider factor each year. 
+* Currently, we are not able to observe any **cyclicality** from the plot above. 
+* Lastly, we can also observe a slight dip in the sales for the year of 1999.
+
+We can check for our observations above by plotting a decomposition of the time series. It reconfirms our observations with respect to **seasonality** and **trend**
+
+```{r}
+plot(stl(q1.ts, "per"))
+```
+
+
+***
+##### **Q1(b)	- Fit a linear trend model with additive seasonality (Model A) and exponential trend model with multiplicative seasonality (Model B). Consider January as the reference group for each model. Produce the regression coefficients and the validation set errors. Remember to fit only the training period.**
+
+**Partitioning the data**
+
+```{r}
+train <- window(q1.ts/1000,end=c(2000,12), frequency=12)
+#autoplot(train) + ylab("Sales '000") + ggtitle("Training Dataset over time")
+
+val <- window(q1.ts/1000,start=c(2001,1), frequency=12)
+```
+
+**Building Models**
+
+Model A - Linear Trend Model with Additive Seasonality
+```{r}
+model_a <- tslm(train ~ trend+season)
+model_a_pred <- forecast(model_a, h = 12, level = 0 )
+
+#Regression Coefficients 
+summary(model_a)
+
+#Validation Set Errors
+accuracy(val, model_a_pred$mean)
+accuracy(model_a_pred,val)
+```
+
+
+Model B - Exponential Trend Model with Multiplicative Seasonality
+```{r}
+model_b <- tslm(train ~ trend+season, lambda=0)
+model_b_pred <- forecast(model_b, h = 12, level = 0 )
+#model_b_pred
+
+#Regression Coefficients 
+model_b
+
+#Validation Set Errors
+accuracy(val, model_b_pred$mean)
+accuracy(model_b_pred,val)
+
+```
+
+***
+
+##### **Q1(c) - Which model is the best model considering RMSE as the metric? Could you have understood this from the line chart? Explain. Produce the plot showing the forecasts from both models along with actual data. In a separate plot, present the residuals from both models (consider only the validation set residuals)**
+
+Considering RMSE (solved in above part b), we observe that RMSE of Model A (Additive Model) is higher than that of Model B (Exponential Model) and hence Model B is preferred. The same conclusion of exponential trend was observed from the line chart plotted above as the increase in sales for each year was growing with a wider gap continually. 
+
+**Plotting both models showing forecast values**
+
+```{r collapse=TRUE, include=TRUE}
+#Plotting both Models
+plot(train, xlab = "Time", ylab = "Sales '000", ylim= c(0,80), main = "Plot showing fit of ModelA & ModelB")
+lines(model_a_pred$fitted, col="red")
+lines(model_b_pred$fitted, col="blue")
+
+```
+
+From the above, we can see that the blue line of model B (exponential model) captures the increasing trend of the data better than model A (additive model). This corroborates our theory above. 
+
+**Residual Plot of Validation Set**
+
+```{r}
+#Residual Plot for entire timeseries
+#plot(train-model_b$fitted.values,main= "Residual Plot", ylab= "Residuals", col="blue",lwd=2, ylim=c(-20,50))
+#lines(val-model_b_pred$mean, col="blue",lwd=2)
+#lines(train-model_a$residuals,col="red",lwd=2)
+#lines(val-model_a_pred$mean, col="red",lwd=2)
+
+plot(val-model_b_pred$mean,main= "Residual Plot", ylab= "Residuals", col="blue",lwd=2, ylim=c(-20,100))
+lines(val-model_a_pred$mean, col="red",lwd=2)
+```
+
+We can notice that the residual plot for the Model B is closer to zero which that of Model A seems to be higher. Thus, Model B is the preferred trend. 
+
+***
+
+#### Q(d)	Examine the additive model. Which month has the highest average sales during the year. What does the estimated trend coefficient in the model A mean?
+
+```{r}
+model_a_pred$mean
+```
+The additive model follows the trend seen in the data with a small peak in March and a higher peak in December. 
+
+Further, we can see that December has the highest average sales during the year. This is in line with our previous observation of seasonality during the end months. 
+
+
+```{r}
+model_a$coefficients
+```
+We also observe that the estimated trend coefficient is 0.2453. It means that there is increase of $24,000 in sales per month.
+
+***
+
+#### Q(e)	Examine the multiplicative model. What does the coefficient of October mean? What does the estimated trend coefficient in the model B mean?
+
+```{r}
+
+model_b_pred$mean
+
+```
+The multiplicative model also follows the previous observation of dataset with smaller peak in March and higher peak in December. It is to be noted that the sale values are closer to the original dataset with wider gap in end of year sale values.
+
+
+```{r}
+model_b$coefficients
+
+```
+
+Co-efficient of October (season 10) is 0.7294 which means that the sales in the month of October is higher than January (reference month) sales by 72.94%. 
+
+Further, the estimated trend co-efficient is 0.0211, which is the Beta 1 of the model. Effectively it means that sales increases by 2.11% every month in the current model. 
+
+***
+
+#### Q(f)	Use the best model type from part (c) to forecast the sales in January 2002. Think carefully which data to use for model fitting in this case. 
+
+We use the best model (Model B - Exponential Trend Model) to forecast the sales in January. It is to be noted that we will use the entire original dataset to forecast values for Jan 2002.  
+
+```{r}
+
+model_b_jan02 <- tslm(q1.ts ~ trend + season, lambda=0)
+jan_02 <- forecast(model_b_jan02, h = 1)
+```
+
+The forecast for the month of Jan 2002 using the model B on original dataset (1995 - 2001) is as follows -  
+```{r}
+jan_02$mean[1]
+```
+
+***
+
+#### Q(g)	Plot the ACF and PACF plot until lag 20 of the residuals obtained from training set of the best model chosen. Comment on these plots and think what AR(p) model could be a good choice?
+
+The ACF & PACF plot of the exponential model (best chosen model = Model B) is as follows- 
+
+```{r}
+
+acf(model_b$residuals,na.action=na.pass,lag.max = 20, main="ACF of Residuals of Model B")
+pacf(model_b_pred$residuals,na.action=na.pass,lag.max = 20, main="PACF of Residuals of Model B")
+
+```
+
+Observing the above ACF plot, we note that there are 3 observations above the significant line, post which the observatins are around the zero mark. Further, even for PACF plot, we have 3 observation above the line (with the 4th observation barely on the significane line). 
+
+Hence we believe that AR(3) model would be appropriate. 
+
+***
+
+#### Q(h)	Fit an AR(p) model as you think appropriate from part (g) to the training set residuals and produce the regression coefficients. Was your intuition at part (g) correct? 
+
+```{r}
+ar_model <- Arima(model_b$residuals, order = c(3,0,0))
+summary(ar_model)
+```
+We can see that the RMSE is 0.13 and the mean is very close to 0. Hence our intuition of AR(3) model was right. 
+
+***
+
+#### Q(i)	Now, using the best regression model and AR(p) model, forecast the sales in January 2002. Think carefully which data to use for model fitting in this case. 
+
+Using Model B and the AR(3) Model, we have forecasted sales for Jan 2002 - 
+
+```{r}
+#Arima Forecast
+ar_jan <- forecast(ar_model, h = 1, level = 0)
+ar_jan$mean*1000
+```
+
+The final sales value for Jan 2002 is as follows - 
+```{r}
+final_jan_sales <- jan_02$mean[1] + ar_jan$mean[1]*1000
+final_jan_sales
+```
+
+***
